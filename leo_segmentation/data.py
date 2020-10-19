@@ -18,9 +18,10 @@ class Transform_image:
         img_height (int): Input image height
 
     """
-    def __init__(self, img_width, img_height):
+    def __init__(self, img_width, img_height, normalize=True):
         self.img_width = img_width
         self.img_height = img_height
+        self.normalize = normalize
 
     def __call__(self, im):
         """Implements the data preprocessing
@@ -33,13 +34,19 @@ class Transform_image:
         """
         w, h = im.size
         if h > w:
-            im = im.transpose(method=Image.ROTATE_270).\
-                             resize((self.img_width, self.img_height))
-        else:
-            im = im.resize((self.img_width, self.img_height))
+            im = im.transpose(method=Image.ROTATE_270)
+        
+        im = im.resize((self.img_width, self.img_height))
         im = np.array(im)
         im = im.astype(np.float32)
-        im = (im - 127.5)/127.5
+        im = (im)/255.0
+        im = np.transpose(im, (2, 0, 1))
+
+        if self.normalize:
+            mean =  np.array([0.485, 0.456, 0.406]).reshape(3,1,1)
+            std = np.array([0.229, 0.224, 0.225]).reshape(3,1,1)
+            im = (im - mean)/std
+
         return im
 
 
@@ -65,22 +72,21 @@ class Transform_mask:
             im (np.ndarray): numpy array containing image data
         """
         w, h = im.size
-        if h > w:
-            im = im.transpose(method=Image.ROTATE_270).\
-                resize((self.img_width, self.img_height))
-        else:
-            im = im.resize((self.img_width, self.img_height))
-        im = np.array(im)
-        im = im.astype(np.float32)
-        im = (im - 127.5)/127.5
-        im = np.round(rgb2gray((im) > 0).astype(np.float32))
-        return im
 
+        if h > w:
+            im = im.transpose(method=Image.ROTATE_270)
+
+        im = im.resize((self.img_width, self.img_height), resample=0)
+
+        im = np.array(im)/255
+        im = (rgb2gray(im) > 0.5).astype(np.float32)
+        return im
 
 def rgb2gray(rgb):
     """ Convert a RGB Image to gray scale """
     # https://stackoverflow.com/questions/12201577/how-can-i-convert-an-rgb-image-into-grayscale-in-python
     return np.dot(rgb[..., :3], [0.2989, 0.5870, 0.1140])
+
 
 
 class Datagenerator(Dataset):
@@ -97,6 +103,7 @@ class Datagenerator(Dataset):
         img_dims = config.data_params.img_dims
         self.transform_image = Transform_image(img_dims.width, img_dims.height)
         self.transform_mask = Transform_mask(img_dims.width, img_dims.height)
+
 
     def __len__(self):
         return len(self._dataset)

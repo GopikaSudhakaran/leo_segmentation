@@ -205,10 +205,10 @@ def prepare_inputs(data):
 def get_named_dict(metadata, batch):
     """Returns a named dict"""
     tr_imgs, tr_masks, val_imgs, val_masks, _, _, _ = metadata
-    data_dict = {'tr_imgs': prepare_inputs(tr_imgs[batch]),
-                 'tr_masks': prepare_inputs(tr_masks[batch]),
-                 'val_imgs':  prepare_inputs(val_imgs[batch]),
-                 'val_masks': prepare_inputs(val_masks[batch])}
+    data_dict = {'tr_imgs': tr_imgs[batch],
+                 'tr_masks': tr_masks[batch],
+                 'val_imgs': val_imgs[batch],
+                 'val_masks': val_masks[batch]}
     return edict(data_dict)
 
 

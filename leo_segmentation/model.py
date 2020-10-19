@@ -9,16 +9,13 @@ from torchvision import models
 from torch.nn import functional as F
 from tqdm import tqdm
 from .utils import display_data_shape, get_named_dict, calc_iou_per_class,\
-    log_data, load_config, list_to_tensor, numpy_to_tensor, tensor_to_numpy,\
-    prepare_inputs
+    log_data, load_config, list_to_tensor, numpy_to_tensor, tensor_to_numpy
 
 
 config = load_config()
 hyp = config.hyperparameters
 device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and config.use_gpu else "cpu")
-img_dims = config.data_params.img_dims
-IMG_DIMS = (img_dims.channels, img_dims.height, img_dims.width)
 
 class EncoderBlock(nn.Module):
     """ Encoder with pretrained backbone """
@@ -41,6 +38,7 @@ class EncoderBlock(nn.Module):
 def decoder_block(conv_in_size, conv_out_size):
     """ Sequentical group formimg a decoder block """
     layers = [
+        
               nn.Conv2d(conv_in_size, conv_out_size,
                         kernel_size=3, stride=1, padding=1),
               nn.ReLU(),
@@ -63,15 +61,15 @@ class DecoderBlock(nn.Module):
     def __init__(self, skip_features, latents):
         super(DecoderBlock, self).__init__()
         self.conv1 = decoder_block(latents.shape[1],
-                                   hyp.base_num_covs*1)
-        self.conv2 = decoder_block(skip_features[-1].shape[1] + hyp.base_num_covs*1, 
-                                   hyp.base_num_covs*2)
-        self.conv3 = decoder_block(skip_features[-2].shape[1] + hyp.base_num_covs*2,
-                                   hyp.base_num_covs*3)
-        self.conv4 = decoder_block(skip_features[-3].shape[1] + hyp.base_num_covs*3,
                                    hyp.base_num_covs*4)
-        self.up_final = nn.ConvTranspose2d(skip_features[-4].shape[1] + hyp.base_num_covs*4,
-                                   hyp.base_num_covs*5, kernel_size=4, stride=2, padding=1)
+        self.conv2 = decoder_block(skip_features[-1].shape[1] + hyp.base_num_covs*4, 
+                                   hyp.base_num_covs*3)
+        self.conv3 = decoder_block(skip_features[-2].shape[1] + hyp.base_num_covs*3,
+                                   hyp.base_num_covs*2)
+        self.conv4 = decoder_block(skip_features[-3].shape[1] + hyp.base_num_covs*2,
+                                   hyp.base_num_covs*1)
+        self.up_final = nn.ConvTranspose2d(skip_features[-4].shape[1] + hyp.base_num_covs*1,
+                                   hyp.base_num_covs, kernel_size=4, stride=2, padding=1)
         
     def forward(self, skip_features, latents):
         o = self.conv1(latents)
@@ -94,7 +92,7 @@ class LEO(nn.Module):
         super(LEO, self).__init__()
         self.mode = mode
         self.encoder = EncoderBlock()
-        seg_network = nn.Conv2d(hyp.base_num_covs*5 + 3, 2, kernel_size=3, stride=1, padding=1)
+        seg_network = nn.Conv2d(hyp.base_num_covs + 3, 2, kernel_size=3, stride=1, padding=1)
         self.seg_weight = seg_network.weight.detach().to(device)
         self.seg_weight.requires_grad = True
         self.loss_fn = CrossEntropyLoss()
@@ -234,7 +232,7 @@ class LEO(nn.Module):
                 val_img_paths = data_dict.val_imgs
                 val_mask_paths = data_dict.val_masks
                 for _img_path, _mask_path in tqdm(zip(val_img_paths, val_mask_paths)):
-                    input_img = prepare_inputs(numpy_to_tensor(list_to_tensor(_img_path, img_transformer)))
+                    input_img = numpy_to_tensor(list_to_tensor(_img_path, img_transformer))
                     input_mask = numpy_to_tensor(list_to_tensor(_mask_path, mask_transformer))
                     _, _, prediction = self.forward(input_img, weight=weight)
                     val_loss = self.loss_fn(prediction, input_mask.long()).item()
