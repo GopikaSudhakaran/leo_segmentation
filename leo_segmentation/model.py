@@ -11,11 +11,51 @@ from tqdm import tqdm
 from .utils import display_data_shape, get_named_dict, calc_iou_per_class,\
     log_data, load_config, list_to_tensor, numpy_to_tensor, tensor_to_numpy
 
+import torch.nn as nn
+import torch.nn.functional as F
+from .sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
+from .aspp import build_aspp
+from .decoder import build_decoder
+from .backbone import build_backbone
+
+
 
 config = load_config()
 hyp = config.hyperparameters
 device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and config.use_gpu else "cpu")
+
+class Deeplab_Encoder(nn.Module):
+    def __init__(self, backbone='xception', output_stride=16, sync_bn=True):
+        super(Deeplab_Encoder, self).__init__()
+        if backbone == 'drn':
+            output_stride = 8
+
+        if sync_bn == True:
+            BatchNorm = SynchronizedBatchNorm2d
+        else:
+            BatchNorm = nn.BatchNorm2d
+
+        self.encoder = build_backbone(backbone, output_stride, BatchNorm)
+        self.aspp = build_aspp(backbone, output_stride, BatchNorm)
+    def forward(self, input):
+        x, low_level_feat = self.encoder(input)
+        x = self.aspp(x)
+        return x, low_level_feat
+
+class Deeplab_Decoder(nn.Module):
+    def __init__(self, backbone='xception', sync_bn=True, num_classes=1):
+        super(Deeplab_Decoder, self).__init__()
+        if sync_bn == True:
+            BatchNorm = SynchronizedBatchNorm2d
+        else:
+            BatchNorm = nn.BatchNorm2d
+        self.decoder = build_decoder(num_classes, backbone, BatchNorm)
+    def forward(self, x, low_level_feat):
+        x = self.decoder(x, low_level_feat)
+        x = F.interpolate(x, size=input.size()[2:], mode='bilinear', align_corners=True)
+
+        return x
 
 class EncoderBlock(nn.Module):
     """ Encoder with pretrained backbone """
@@ -91,7 +131,7 @@ class LEO(nn.Module):
     def __init__(self, mode="meta_train"):
         super(LEO, self).__init__()
         self.mode = mode
-        self.encoder = EncoderBlock()
+        self.encoder = Deeplab_Encoder()
         seg_network = nn.Conv2d(hyp.base_num_covs + 3, 2, kernel_size=3, stride=1, padding=1)
         self.seg_weight = seg_network.weight.detach().to(device)
         self.seg_weight.requires_grad = True
@@ -261,7 +301,7 @@ def compute_loss(leo, metadata, train_stats, transformers, mode="meta_train"):
         if train_stats.episode == 1:
             data_dict = get_named_dict(metadata, 0)
             skip_features, latents = leo.forward_encoder(data_dict.tr_imgs)
-            leo.decoder = DecoderBlock(skip_features, latents).to(device)
+            leo.decoder = Deeplab_Decoder().to(device)
             leo.optimizer_decoder = torch.optim.Adam(
               leo.decoder.parameters(), lr=hyp.outer_loop_lr)
 

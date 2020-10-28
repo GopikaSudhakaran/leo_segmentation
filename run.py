@@ -12,6 +12,8 @@ from leo_segmentation.utils import load_config, check_experiment,\
     get_named_dict, log_data, load_yaml, train_logger, val_logger, \
     print_to_string_io, save_pickled_data, model_dir
 
+
+
 try:
     shell = get_ipython().__class__.__name__
     if shell == "NoneType":
@@ -23,7 +25,7 @@ except NameError:
     dataset = args.dataset
 
 
-def load_model_and_params():
+def load_model_and_params(device):
     """Loads model and accompanying saved parameters"""
     leo, optimizer, stats = load_model()
     episodes_completed = stats["episode"]
@@ -43,7 +45,7 @@ def train_model(config, dataset):
                           and config.use_gpu else "cpu")
     if check_experiment(config):
         # Load saved model and parameters
-        leo, optimizer, train_stats = load_model_and_params()
+        leo, optimizer, train_stats = load_model_and_params(device)
     else:
         # Train a fresh model
         leo = LEO().to(device)
